@@ -11,7 +11,7 @@ public class Plugin : BasePlugin
 {
     public const string Guid = "hoofprintbay.modmanager";
     public const string Name = "Mod Manager";
-    public const string Version = "1.0.0";
+    public const string Version = "1.1.0";
 
     internal static ManualLogSource Logger;
     internal static ConfigEntry<bool> MoveOtherSettings;

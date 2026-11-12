@@ -355,9 +355,12 @@ internal static class ModsPanel
 
     // ---- left column: the installed mods ----
 
-    private static void FillMods()
+    private static void FillMods(bool keepScroll = false)
     {
+        var position = modsScroll.verticalNormalizedPosition;
         Clear(modsColumn);
+
+        AddFolders();
 
         if (mods.Count == 0)
             AddText(modsColumn, templates.Note, "No mods detected.");
@@ -373,13 +376,140 @@ internal static class ModsPanel
                 // Clicking a mod that has settings jumps to them in the right column.
                 if (mod.HasSettings)
                     MakeClickable(row, () => ScrollToSettings(mod));
-                var details = string.IsNullOrEmpty(mod.Detail) ? mod.Kind : mod.Detail;
-                AddHint(modsColumn, details);
+                if (mod.CanSwitch)
+                    AddSwitch(row, mod);
+                AddHint(modsColumn, DetailsOf(mod));
                 AddSpacer(modsColumn);
             }
         }
         Refresh(modsColumn, modsScroll);
         FitLabels(modsColumn, modsScroll);
+        if (keepScroll)
+            modsScroll.verticalNormalizedPosition = position;
+    }
+
+    private const float SideControlWidth = 190;
+
+    // Open until clicked shut; only for this game session.
+    private static bool foldersOpen = true;
+
+    // Where the mods are on disk, each with a button that opens the folder. Clicking the title folds them
+    // away, like the competition headings Skip Training adds to the horse book.
+    private static void AddFolders()
+    {
+        var title = AddText(modsColumn, templates.Title, $"{(foldersOpen ? "▼" : "▶")} Folders");
+        MakeClickable(title, () =>
+        {
+            foldersOpen = !foldersOpen;
+            FillMods(keepScroll: true);
+        });
+        if (foldersOpen)
+        {
+            AddFolder("Plugins", BepInEx.Paths.PluginPath);
+            AddFolder("Tack, clothes, languages", ModRegistry.ModsFolder);
+        }
+        AddHint(modsColumn, "Mods switched on or off change the next time the game starts.");
+    }
+
+    private static void AddFolder(string text, string path)
+    {
+        var row = AddText(modsColumn, templates.Heading, text);
+        var button = Clone(templates.ResetButton, row.transform, "Open folder");
+        PlaceRight(button.transform, new Vector2(SideControlWidth - 10, 50));
+        button.GetComponentInChildren<TMP_Text>(true).text = "Open folder";
+        var click = button.GetComponent<Button>();
+        click.onClick = new Button.ButtonClickedEvent();
+        click.onClick.AddListener(new Action(() => ModSwitch.OpenFolder(path)));
+        KeepClear(row);
+        // Narrower than other hints: the button reaches down beside it.
+        var hint = AddHint(modsColumn, path.TrimEnd('\\', '/'));
+        var rect = Rect(hint.transform);
+        rect.sizeDelta = new Vector2(ContentWidth - SideControlWidth, rect.sizeDelta.y);
+        AddSpacer(modsColumn);
+    }
+
+    // Checkbox with "On"/"Off" at the right end of a mod's name.
+    private static void AddSwitch(GameObject heading, ModInfo mod)
+    {
+        var copy = Clone(templates.Toggle, heading.transform, "Switch " + mod.Name);
+        PlaceRight(copy.transform, new Vector2(SideControlWidth - 60, 50));
+        var label = copy.transform.Find("Label").GetComponent<TMP_Text>();
+        var labelRect = Rect(label.transform);
+        labelRect.pivot = new Vector2(0, 0.5f);
+        labelRect.anchoredPosition = new Vector2(50, 0);
+        labelRect.sizeDelta = new Vector2(SideControlWidth - 110, 45);
+        label.text = mod.On ? "On" : "Off";
+        var toggle = copy.GetComponent<Toggle>();
+        // A fresh event drops the game's quest money handler that came with the copy.
+        toggle.onValueChanged = new Toggle.ToggleEvent();
+        toggle.SetIsOnWithoutNotify(mod.On);
+        toggle.onValueChanged.AddListener(new Action<bool>(on =>
+        {
+            var problem = ModSwitch.Set(mod, on);
+            // One DLL can hold several plugins; renaming it switches all of them.
+            if (problem == null && mod.Folder == null)
+                foreach (var other in mods.Where(m => m.Folder == null && m.File != null
+                             && string.Equals(m.File, mod.File, StringComparison.OrdinalIgnoreCase)))
+                    other.On = on;
+            // Also when it failed: the checkbox goes back to what is on disk.
+            FillMods(keepScroll: true);
+            if (problem != null)
+                ShowProblem($"{mod.Name} could not be switched {(on ? "on" : "off")}", problem);
+        }));
+        KeepClear(heading);
+    }
+
+    // The game's own info box; the reason is in the log as well, for scenes without one.
+    private static void ShowProblem(string heading, string text)
+    {
+        try
+        {
+            NotificationManager.i?.ShowInfoDialog(true, heading, text);
+        }
+        catch (Exception e)
+        {
+            Plugin.Logger.LogError($"Showing the message '{heading}' failed: {e}");
+        }
+    }
+
+    // Anchored to the right end of its row, which FitLabels stretches to the edge of the column.
+    private static void PlaceRight(Transform transform, Vector2 size)
+    {
+        var rect = Rect(transform);
+        rect.anchorMin = new Vector2(1, 0.5f);
+        rect.anchorMax = new Vector2(1, 0.5f);
+        rect.pivot = new Vector2(1, 0.5f);
+        rect.sizeDelta = size;
+        rect.anchoredPosition = new Vector2(0, 0);
+    }
+
+    // The row's own text stays left of the control at its right end.
+    private static void KeepClear(GameObject row)
+    {
+        var text = row.GetComponent<TMP_Text>();
+        text.margin = new Vector4(text.margin.x, text.margin.y, SideControlWidth, text.margin.w);
+    }
+
+    // The grey line under a mod's name: its id or pack details, and what a switch will do.
+    private static string DetailsOf(ModInfo mod)
+    {
+        var parts = new List<string> { string.IsNullOrEmpty(mod.Detail) ? mod.Kind : mod.Detail };
+        if (mod.On != mod.OnAtStart)
+            parts.Add(mod.On ? "on after a restart" : "off after a restart");
+        string Names(IEnumerable<ModInfo> list) => string.Join(", ", list.Select(m => m.Name));
+        if (!mod.On && mod.Guid != null)
+        {
+            var needing = mods.Where(m => m.On && m.Needs.Contains(mod.Guid)).ToList();
+            if (needing.Count > 0)
+                parts.Add($"{Names(needing)} won't load without it");
+        }
+        if (mod.On)
+        {
+            var off = mods.Where(m => !m.On && m.Guid != null && mod.Needs.Contains(m.Guid)).ToList();
+            if (off.Count > 0)
+                parts.Add($"won't load while {Names(off)} is off");
+        }
+        return string.Join(" - ", parts);
     }
 
     // The text itself is the button. The game's ClickSound gives it the hover animation and click sound of
@@ -468,7 +598,7 @@ internal static class ModsPanel
         // Only when needed: with characters from a fallback font it can cut off text that fits.
         text.overflowMode = TextOverflowModes.Overflow;
         var needed = text.GetPreferredValues(text.text, float.PositiveInfinity, float.PositiveInfinity).x;
-        var width = text.rectTransform.rect.width;
+        var width = text.rectTransform.rect.width - text.margin.x - text.margin.z;
         if (needed <= width)
             return;
         text.fontSize = full * Mathf.Max(smallest, width / needed);
@@ -572,7 +702,8 @@ internal static class ModsPanel
             AddSpacer(settingsColumn);
         }
 
-        if (entries.Count > 0)
+        // Mod Manager has a single checkbox; a reset button for it would only be clutter.
+        if (entries.Count > 0 && mod.Guid != Plugin.Guid)
         {
             var reset = Clone(templates.ResetButton, settingsColumn, "Reset " + mod.Name);
             reset.GetComponentInChildren<TMP_Text>(true).text = "Reset to defaults";

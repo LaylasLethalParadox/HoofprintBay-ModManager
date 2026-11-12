@@ -6,6 +6,17 @@ The left side lists your BepInEx plugins and the custom tack, clothes and langua
 
 If another mod adds settings to the game's Settings window, Mod Manager can move them to the Mods menu. The other mod still saves its own values. To leave them where they were, untick **Move Other Mods Settings**.
 
+## Switching mods on and off
+
+Every mod has an On/Off checkbox, and a switch takes effect the next time the game starts. Mod Manager stores nothing; the state is where the files are:
+
+- A plugin is renamed from `Name.dll` to `Name.dll.off`, so BepInEx skips it.
+- A pack's json files and the pictures they use move to `Saves~\Mods\Disabled\Tack` (or `Clothes`, `Language`) and move back when you switch it on. Existing files are never overwritten.
+
+To undo a switch by hand, rename or move the files back. A save where a horse wears tack from a pack that is off still loads, and the horse is shown without that item.
+
+The Folders section at the top of the list has Open folder buttons for the plugins folder and the game's mods folder.
+
 ## Install
 
 You need BepInEx 6 bleeding edge build 793 for IL2CPP (Windows x64). BepInEx 5 and the older 6.0.0-pre builds can't load this game.
