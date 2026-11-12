@@ -1,4 +1,5 @@
-# Pushing a version tag such as v1.2.0 on main publishes that version and removes the older releases.
+# Pushing a version tag such as v1.2.0 on main publishes that version as the latest release and marks the
+# older releases as archived (title and a note; they stay downloadable).
 # GitHub can't compile the mod because that needs the game's files, so the zip is built on a PC with
 # package.ps1 and committed as dist/ModManager-<version>.zip. Tags themselves are kept.
 name: Release
@@ -48,8 +49,14 @@ jobs:
             --verify-tag --latest \
             --title "Mod Manager $VERSION" \
             --notes-file RELEASE_NOTES.md
+          # Older releases stay downloadable; they are only marked as archived (once).
           gh release list --limit 100 --json tagName --jq '.[].tagName' | while read -r old; do
-            if [ "$old" != "$GITHUB_REF_NAME" ]; then
-              gh release delete "$old" --yes
+            if [ "$old" = "$GITHUB_REF_NAME" ]; then
+              continue
             fi
+            title=$(gh release view "$old" --json name --jq .name)
+            case "$title" in *"(archived)") continue ;; esac
+            gh release view "$old" --json body --jq .body > old-notes.md
+            printf 'Archived: this is an older version. The current one is %s.\n\n' "$GITHUB_REF_NAME" | cat - old-notes.md > archived-notes.md
+            gh release edit "$old" --title "$title (archived)" --notes-file archived-notes.md
           done
