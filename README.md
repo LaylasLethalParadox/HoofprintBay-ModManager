@@ -62,7 +62,7 @@ public class Plugin : BasePlugin
 }
 ```
 
-`ISettingsPage` has Title, Heading, Note, Hint, Spacer, Toggle, Choice and Slider. Each row except Spacer takes a `visible` condition. Pass `showConfigEntries: false` to `Register` to keep your config entries out of the window.
+`ISettingsPage` has Title, Heading, Note, Hint, Spacer, Toggle, Choice, Slider and Number (a box for a whole number, since 1.2.0; a plugin that uses it should depend on `hoofprintbay.modmanager` version `>=1.2.0`). Each row except Spacer takes a `visible` condition. Pass `showConfigEntries: false` to `Register` to keep your config entries out of the window.
 
 ## Custom content names
 

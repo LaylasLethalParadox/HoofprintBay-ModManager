@@ -23,6 +23,10 @@ public interface ISettingsPage
     // Whole-number slider from min to max; the label is built from the current value.
     // defaultValue puts the game's default marker on the slider.
     void Slider(Func<int, string> label, int min, int max, Func<int> get, Action<int> set, int? defaultValue = null, Func<bool> visible = null);
+
+    // Text box for a whole number from min to max (since 1.2.0). A typed value outside the range is
+    // clamped; anything that isn't a number puts the box back to get().
+    void Number(string label, int min, int max, Func<int> get, Action<int> set, Func<bool> visible = null);
 }
 
 public static class ModSettings

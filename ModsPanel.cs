@@ -779,7 +779,30 @@ internal static class ModsPanel
     // is put back to the current one.
     private static void AddInput(string text, ConfigEntryBase entry)
     {
-        var row = ChoiceRow(text);
+        var input = InputRow(text);
+        input.characterValidation = entry.SettingType == typeof(int) ? TMP_InputField.CharacterValidation.Integer
+            : entry.SettingType == typeof(float) || entry.SettingType == typeof(double) ? TMP_InputField.CharacterValidation.Decimal
+            : TMP_InputField.CharacterValidation.None;
+        input.SetTextWithoutNotify(entry.GetSerializedValue());
+        input.onEndEdit.AddListener(new Action<string>(value =>
+        {
+            try
+            {
+                entry.SetSerializedValue(value);
+            }
+            catch (Exception e)
+            {
+                Plugin.Logger.LogWarning($"'{value}' is not a valid value for {entry.Definition.Key}: {e.Message}");
+            }
+            input.SetTextWithoutNotify(entry.GetSerializedValue());
+        }));
+    }
+
+    private static TMP_InputField InputRow(string text) => InputRow(text, out _);
+
+    private static TMP_InputField InputRow(string text, out GameObject row)
+    {
+        row = ChoiceRow(text);
         var dropdown = row.GetComponentInChildren<TMP_Dropdown>(true);
         Object.Destroy(dropdown.gameObject);
 
@@ -804,22 +827,7 @@ internal static class ModsPanel
         input.onValueChanged = new TMP_InputField.OnChangeEvent();
         input.characterLimit = 0;
         input.lineType = TMP_InputField.LineType.SingleLine;
-        input.characterValidation = entry.SettingType == typeof(int) ? TMP_InputField.CharacterValidation.Integer
-            : entry.SettingType == typeof(float) || entry.SettingType == typeof(double) ? TMP_InputField.CharacterValidation.Decimal
-            : TMP_InputField.CharacterValidation.None;
-        input.SetTextWithoutNotify(entry.GetSerializedValue());
-        input.onEndEdit.AddListener(new Action<string>(value =>
-        {
-            try
-            {
-                entry.SetSerializedValue(value);
-            }
-            catch (Exception e)
-            {
-                Plugin.Logger.LogWarning($"'{value}' is not a valid value for {entry.Definition.Key}: {e.Message}");
-            }
-            input.SetTextWithoutNotify(entry.GetSerializedValue());
-        }));
+        return input;
     }
 
     // Slider row with the game's default marker, for numbers that have a range.
@@ -965,6 +973,21 @@ internal static class ModsPanel
                 var v = (int)Math.Round(value);
                 set(v);
                 SetLabel(text, label(v));
+            }));
+            Track(row, visible);
+        }
+
+        public void Number(string label, int min, int max, Func<int> get, Action<int> set, Func<bool> visible = null)
+        {
+            var input = InputRow(label, out var row);
+            input.characterValidation = TMP_InputField.CharacterValidation.Integer;
+            input.SetTextWithoutNotify(get().ToString(System.Globalization.CultureInfo.InvariantCulture));
+            input.interactable = !Locked;
+            input.onEndEdit.AddListener(new Action<string>(value =>
+            {
+                if (int.TryParse(value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var v))
+                    set(Math.Clamp(v, min, max));
+                input.SetTextWithoutNotify(get().ToString(System.Globalization.CultureInfo.InvariantCulture));
             }));
             Track(row, visible);
         }

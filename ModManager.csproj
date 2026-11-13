@@ -6,7 +6,7 @@
     <RootNamespace>ModManager</RootNamespace>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
-    <Version>1.1.0</Version>
+    <Version>1.2.0</Version>
     <DefineConstants Condition="'$(UiDump)' == 'true'">$(DefineConstants);UI_DUMP</DefineConstants>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
