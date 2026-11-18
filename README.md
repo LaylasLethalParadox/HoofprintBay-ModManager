@@ -2,7 +2,7 @@
 
 Adds a Mods menu to [Horses of Hoofprint Bay](https://store.steampowered.com/app/3727090/). You open it from a new sign on the main menu or a Mods button in the pause menu, and it uses the game's own window and controls.
 
-The left side lists your BepInEx plugins and the custom tack, clothes and language files in the game's mods folder. The right side has the settings of every mod that has some. Click a mod's name to jump to its settings.
+The left side lists your BepInEx plugins and the custom tack, clothes and language files in the game's mods folder. The right side has the settings of every mod that has some, each folded under the mod's name. Click the name to open or close them, or click a mod on the left to open its settings and scroll to them.
 
 If another mod adds settings to the game's Settings window, Mod Manager can move them to the Mods menu. The other mod still saves its own values. To leave them where they were, untick **Move Other Mods Settings**.
 
@@ -62,7 +62,7 @@ public class Plugin : BasePlugin
 }
 ```
 
-`ISettingsPage` has Title, Heading, Note, Hint, Spacer, Toggle, Choice, Slider and Number (a box for a whole number, since 1.2.0; a plugin that uses it should depend on `hoofprintbay.modmanager` version `>=1.2.0`). Each row except Spacer takes a `visible` condition. Pass `showConfigEntries: false` to `Register` to keep your config entries out of the window.
+`ISettingsPage` has Title, Heading, Note, Hint, Spacer, Toggle, Choice, Slider, Number (a box for a whole number, since 1.2.0) and Section (since 1.3.0: a heading that folds the rows its `content` action adds; the optional hint under it always shows). A plugin that uses Number or Section should depend on `hoofprintbay.modmanager` version `>=1.2.0` or `>=1.3.0`. Each row except Spacer takes a `visible` condition. Pass `showConfigEntries: false` to `Register` to keep your config entries out of the window.
 
 ## Custom content names
 

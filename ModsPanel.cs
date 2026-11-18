@@ -546,21 +546,21 @@ internal static class ModsPanel
         return content.rect.yMax - content.InverseTransformPoint(row.TransformPoint(new Vector3(0, row.rect.yMax, 0))).y;
     }
 
+    // Unfolds the mod's settings too: clicking it in the left column means you want to see them.
     private static void ScrollToSettings(ModInfo mod)
     {
+        if (!IsOpen(mod))
+        {
+            SetOpen(mod, true);
+            FillSettings(keepScroll: true);
+        }
         if (!settingsStart.TryGetValue(mod, out var start) || start == null)
         {
             Plugin.Logger.LogWarning($"Clicked {mod.Name}, but its settings aren't in the list.");
             return;
         }
-        var content = settingsScroll.content;
-        LayoutRebuilder.ForceRebuildLayoutImmediate(content);
-
-        var distance = OffsetOf(start);
-        var scrollable = content.rect.height - Viewport.rect.height;
-        var position = scrollable > 0 ? Mathf.Clamp01(1f - distance / scrollable) : 1f;
-        settingsScroll.StopMovement();
-        settingsScroll.verticalNormalizedPosition = position;
+        LayoutRebuilder.ForceRebuildLayoutImmediate(settingsScroll.content);
+        ScrollTo(OffsetOf(start));
     }
 
     // Labels and one-line texts (titles, headings, notes) reach to the edge of the column, and one too long
@@ -643,6 +643,7 @@ internal static class ModsPanel
         var position = settingsScroll.verticalNormalizedPosition;
         Clear(settingsColumn);
         settingsStart.Clear();
+        foldTitles.Clear();
         tail = null;
         lastStart = null;
 
@@ -651,8 +652,8 @@ internal static class ModsPanel
             AddText(settingsColumn, templates.Note, "None of the installed mods has settings.");
         foreach (var mod in withSettings)
             AddModSettings(mod);
-        // With one mod there is nothing to jump between.
-        if (withSettings.Count > 1)
+        // With one mod there is nothing to jump between; with all folded the titles need no room after them.
+        if (withSettings.Count > 1 && withSettings.Any(IsOpen))
         {
             tail = AddSpacer(settingsColumn);
             tail.AddComponent<LayoutElement>();
@@ -664,15 +665,69 @@ internal static class ModsPanel
             settingsScroll.verticalNormalizedPosition = position;
     }
 
+    // Mods whose settings are unfolded. Folded at the first opening; kept while the game runs, so reopening
+    // the window shows the ones left open. ModInfo is collected anew at each opening, hence the key.
+    // Also holds the open sections inside a mod's page ("<mod key>/<heading>").
+    private static readonly HashSet<string> openSettings = new(StringComparer.OrdinalIgnoreCase);
+    // The clickable titles of the current fill, by the same keys, to keep a clicked one in place.
+    private static readonly Dictionary<string, RectTransform> foldTitles = new(StringComparer.OrdinalIgnoreCase);
+
+    private static string KeyOf(ModInfo mod) => mod.Guid ?? mod.Kind + "/" + mod.Name;
+
+    private static bool IsOpen(ModInfo mod) => openSettings.Contains(KeyOf(mod));
+
+    private static void SetOpen(ModInfo mod, bool open)
+    {
+        if (open)
+            openSettings.Add(KeyOf(mod));
+        else
+            openSettings.Remove(KeyOf(mod));
+    }
+
+    // Folds or unfolds a mod's settings or a section of them, keeping its title where it is on screen.
+    private static void ToggleFold(string key)
+    {
+        float? onScreen = null;
+        if (foldTitles.TryGetValue(key, out var before) && before != null)
+            onScreen = OffsetOf(before) - ScrolledBy();
+        if (!openSettings.Remove(key))
+            openSettings.Add(key);
+        FillSettings(keepScroll: true);
+        if (onScreen.HasValue && foldTitles.TryGetValue(key, out var after) && after != null)
+            ScrollTo(OffsetOf(after) - onScreen.Value);
+    }
+
+    // How far the column is scrolled down, in the content's units.
+    private static float ScrolledBy()
+    {
+        var scrollable = settingsScroll.content.rect.height - Viewport.rect.height;
+        return scrollable > 0 ? (1f - settingsScroll.verticalNormalizedPosition) * scrollable : 0;
+    }
+
+    private static void ScrollTo(float distance)
+    {
+        var content = settingsScroll.content;
+        LayoutRebuilder.ForceRebuildLayoutImmediate(content);
+        var scrollable = content.rect.height - Viewport.rect.height;
+        settingsScroll.StopMovement();
+        settingsScroll.verticalNormalizedPosition = scrollable > 0 ? Mathf.Clamp01(1f - distance / scrollable) : 1f;
+    }
+
     private static void AddModSettings(ModInfo mod)
     {
-        lastStart = Rect(AddText(settingsColumn, templates.Title, mod.Name).transform);
+        var open = IsOpen(mod);
+        var title = AddText(settingsColumn, templates.Title, $"{(open ? "▼" : "▶")} {mod.Name}");
+        MakeClickable(title, () => ToggleFold(KeyOf(mod)));
+        lastStart = Rect(title.transform);
         settingsStart[mod] = lastStart;
+        foldTitles[KeyOf(mod)] = lastStart;
+        if (!open)
+            return;
 
         // Settings the plugin keeps itself (e.g. per save game), then its BepInEx config entries.
         if (mod.Page != null)
         {
-            var page = new PageBuilder();
+            var page = new PageBuilder(mod);
             try
             {
                 mod.Page(page);
@@ -702,8 +757,9 @@ internal static class ModsPanel
             AddSpacer(settingsColumn);
         }
 
-        // Mod Manager has a single checkbox; a reset button for it would only be clutter.
-        if (entries.Count > 0 && mod.Guid != Plugin.Guid)
+        // A single checkbox (like Mod Manager's own) needs no reset button; it would only be clutter.
+        var singleCheckbox = entries.Count == 1 && entries[0].SettingType == typeof(bool);
+        if (entries.Count > 0 && !singleCheckbox)
         {
             var reset = Clone(templates.ResetButton, settingsColumn, "Reset " + mod.Name);
             reset.GetComponentInChildren<TMP_Text>(true).text = "Reset to defaults";
@@ -875,8 +931,32 @@ internal static class ModsPanel
     private class PageBuilder : ISettingsPage
     {
         private readonly List<(GameObject Row, Func<bool> Visible)> conditional = new();
+        private readonly ModInfo mod;
+
+        public PageBuilder(ModInfo mod) => this.mod = mod;
 
         public bool Locked { get; set; }
+
+        public void Section(string heading, Action content, string hint = null)
+        {
+            var key = KeyOf(mod) + "/" + heading;
+            var open = openSettings.Contains(key);
+            var row = AddText(settingsColumn, templates.Heading, $"{(open ? "▼" : "▶")} {heading}");
+            MakeClickable(row, () => ToggleFold(key));
+            foldTitles[key] = Rect(row.transform);
+            if (!string.IsNullOrWhiteSpace(hint))
+                AddHint(settingsColumn, hint);
+            if (!open)
+                return;
+            try
+            {
+                content?.Invoke();
+            }
+            catch (Exception e)
+            {
+                Plugin.Logger.LogError($"Showing the section '{heading}' of {mod.Name} failed: {e}");
+            }
+        }
 
         public void RefreshVisibility()
         {

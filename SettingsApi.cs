@@ -27,6 +27,10 @@ public interface ISettingsPage
     // Text box for a whole number from min to max (since 1.2.0). A typed value outside the range is
     // clamped; anything that isn't a number puts the box back to get().
     void Number(string label, int min, int max, Func<int> get, Action<int> set, Func<bool> visible = null);
+
+    // Heading that folds the rows content adds (since 1.3.0). The hint under it always shows. Folded at
+    // first; whether it is open is kept while the game runs.
+    void Section(string heading, Action content, string hint = null);
 }
 
 public static class ModSettings
